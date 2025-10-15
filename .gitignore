@@ -4,3 +4,9 @@ __pycache__/
 *.egg-info/
 .venv/
 *.log
+
+# Build artifacts folder - exclude all generated files
+build-artifacts/*
+!build-artifacts/.gitkeep
+!build-artifacts/dist/.gitkeep
+!build-artifacts/build/.gitkeep

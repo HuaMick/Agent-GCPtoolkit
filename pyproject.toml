@@ -11,5 +11,18 @@ dependencies = [
     "google-cloud-secret-manager",
 ]
 
+[project.scripts]
+gcptoolkit = "frontend.cli.main:main"
+
 [tool.setuptools]
-packages = ["agent_gcptoolkit"]
+packages = [
+    "agent_gcptoolkit",
+    "backend",
+    "backend.services",
+    "backend.services.secrets",
+    "backend.services.secrets.src",
+    "backend.services.secrets.src.domains",
+    "backend.services.secrets.src.workflows",
+    "frontend",
+    "frontend.cli",
+]
