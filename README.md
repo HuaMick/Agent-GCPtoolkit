@@ -203,14 +203,7 @@ gcptoolkit secrets get MY_SECRET 2>/dev/null
 
 ### Permission denied
 
-Authenticated but lacking secretAccessor role. Grant permissions:
-
-```bash
-# For your user account
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="user:YOUR_EMAIL@example.com" \
-  --role="roles/secretmanager.secretAccessor"
-```
+Verify your account has the required role in Prerequisites section 3, or use env var fallback.
 
 ### Command not found
 
