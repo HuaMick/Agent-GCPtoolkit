@@ -31,7 +31,8 @@ export MY_SECRET="test_value"
 
 # Retrieve it
 gcptoolkit secrets get MY_SECRET
-# Output: Secret 'MY_SECRET': test_value
+# Output: test_value
+# Note: May show GCP warning on stderr (safe to ignore when using env vars)
 ```
 
 For production setup with GCP Secret Manager, see [Prerequisites](#prerequisites).
@@ -198,6 +199,17 @@ Command succeeded using env var fallback. Fix authentication or suppress stderr:
 gcloud auth application-default login
 # OR
 gcptoolkit secrets get MY_SECRET 2>/dev/null
+```
+
+### Permission denied
+
+Authenticated but lacking secretAccessor role. Grant permissions:
+
+```bash
+# For your user account
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="user:YOUR_EMAIL@example.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
 ### Command not found
