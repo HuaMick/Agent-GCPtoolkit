@@ -56,13 +56,12 @@ def get_secret(secret_name: str, project_id: Optional[str] = None, quiet: bool =
         return secret_value
 
     # Fallback to environment variable
-    # BLIND TESTING FIX #4: Only log if not quiet mode
-    if not quiet:
-        logger.warning(f"Falling back to environment variable for {secret_name}")
-
     env_value = os.getenv(secret_name)
 
+    # IMPROVED FIX: Only log fallback if we're actually falling back to something
     if env_value:
+        if not quiet:
+            logger.warning(f"GCP Secret Manager fetch failed, using environment variable for {secret_name}")
         secret = Secret(
             name=secret_name,
             value=env_value,
@@ -70,5 +69,7 @@ def get_secret(secret_name: str, project_id: Optional[str] = None, quiet: bool =
             source="env"
         )
         _secret_cache[cache_key] = secret
+        return env_value
 
-    return env_value
+    # If we get here, secret not found in either GCP or environment
+    return None

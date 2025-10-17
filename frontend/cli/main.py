@@ -80,7 +80,8 @@ def cmd_secrets_get(args):
             print(f"Secret '{args.secret_name}': {secret_value}")
         sys.exit(0)  # BLIND TESTING FIX #3: Explicit exit code 0
     else:
-        print(f"Error: Secret '{args.secret_name}' not found", file=sys.stderr)
+        # IMPROVED FIX: Clearer error message indicating both sources were checked
+        print(f"Error: Secret '{args.secret_name}' not found in GCP Secret Manager or environment variables", file=sys.stderr)
         sys.exit(1)  # BLIND TESTING FIX #3: Exit code 1 for runtime errors
 
 

@@ -16,7 +16,6 @@ gcptoolkit = "frontend.cli.main:main"
 
 [tool.setuptools]
 packages = [
-    "agent_gcptoolkit",
     "backend",
     "backend.services",
     "backend.services.secrets",
