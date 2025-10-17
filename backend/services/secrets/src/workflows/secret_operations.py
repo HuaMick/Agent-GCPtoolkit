@@ -25,19 +25,37 @@ def get_secret(secret_name: str, project_id: Optional[str] = None, quiet: bool =
         Secret value as string, or None if not found
 
     Behavior:
+        - Checks environment variables FIRST (fast path for development)
         - Caches secrets in memory (per-process only, NOT across CLI invocations)
         - Auto-detects project_id from GCP_PROJECT env var or gcloud config
-        - Falls back to os.getenv(secret_name) if GCP fetch fails
-        - With quiet=False: Logs fallback warnings to stderr
-        - With quiet=True: Silent fallback (for scripts/production use)
+        - Falls back to GCP Secret Manager if env var not set (production path)
+        - With quiet=False: Logs source information to stderr
+        - With quiet=True: Silent operation (for scripts/production use)
     """
+    # PERFORMANCE FIX: Check environment variable FIRST before initializing GCP client
+    # This avoids 12-second GCP authentication timeout during local development
+    env_value = os.getenv(secret_name)
+    if env_value:
+        # Use a simplified cache key for env vars (no project_id needed)
+        cache_key = f"env:{secret_name}"
+        if cache_key not in _secret_cache:
+            secret = Secret(
+                name=secret_name,
+                value=env_value,
+                project_id="local",
+                source="env"
+            )
+            _secret_cache[cache_key] = secret
+        return env_value
+
+    # Environment variable not set, try GCP Secret Manager
     client = GCPSecretClient()
 
     # Auto-detect project_id if not provided
     if not project_id:
         project_id = client.get_project_id() or "unknown"
 
-    # Check cache first
+    # Check cache for GCP secrets
     cache_key = f"{project_id}:{secret_name}"
     if cache_key in _secret_cache:
         return _secret_cache[cache_key].value
@@ -55,21 +73,5 @@ def get_secret(secret_name: str, project_id: Optional[str] = None, quiet: bool =
         _secret_cache[cache_key] = secret
         return secret_value
 
-    # Fallback to environment variable
-    env_value = os.getenv(secret_name)
-
-    # IMPROVED FIX: Only log fallback if we're actually falling back to something
-    if env_value:
-        if not quiet:
-            logger.warning(f"GCP Secret Manager fetch failed, using environment variable for {secret_name}")
-        secret = Secret(
-            name=secret_name,
-            value=env_value,
-            project_id=project_id,
-            source="env"
-        )
-        _secret_cache[cache_key] = secret
-        return env_value
-
-    # If we get here, secret not found in either GCP or environment
+    # If we get here, secret not found in either environment or GCP
     return None

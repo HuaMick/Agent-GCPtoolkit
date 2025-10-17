@@ -161,9 +161,12 @@ SECRET_VALUE=$(gcptoolkit secrets get MY_SECRET 2>/dev/null)
 
 ## How It Works
 
-1. **Memory Caching**: Secrets are cached in-memory per-process. CLI invocations spawn new processes, so caching only benefits multiple `get_secret()` calls within the same Python script.
+1. **Environment Variable Priority**: Checks environment variables FIRST for fast local development. Only initializes GCP client if env var not found. This provides:
+   - Fast local development (< 1ms when using env vars)
+   - No GCP authentication delay during development
+   - Production still uses GCP Secret Manager when env vars not set
 
-2. **Fallback Mechanism**: If GCP Secret Manager is unavailable, automatically falls back to `os.getenv(secret_name)`
+2. **Memory Caching**: Secrets are cached in-memory per-process. CLI invocations spawn new processes, so caching only benefits multiple `get_secret()` calls within the same Python script.
 
 3. **Project ID Auto-Detection**: Uses `gcloud config get-value project` to determine the active GCP project
 
