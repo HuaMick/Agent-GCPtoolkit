@@ -9,6 +9,10 @@ __pycache__/
 .venv/
 *.log
 
+# Test files in root (use tests/ directory instead)
+/multi_secret_workflow.py
+/test_*.py
+
 # Build artifacts folder - exclude all generated files
 build-artifacts/*
 !build-artifacts/.gitkeep
