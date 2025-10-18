@@ -16,7 +16,7 @@ Agent-GCPtoolkit solves this by centralizing secrets in GCP Secret Manager while
 - **get_secret()** - Single function to fetch secrets from GCP Secret Manager
 - **Memory caching** - Secrets fetched once per process, reducing API calls
 - **Environment variable fallback** - Graceful degradation when GCP is unavailable
-- **Auto-detect project ID** - No configuration needed when gcloud is configured
+- **Config-based authentication** - Service account authentication via config file
 
 ## Quick Start (No GCP Required)
 
@@ -45,41 +45,30 @@ For production setup with GCP Secret Manager, see [Prerequisites](#prerequisites
 gcloud services enable secretmanager.googleapis.com
 ```
 
-### 2. Authentication (Choose ONE)
+### 2. Authentication
 
-**Option 1: Service Account (CI/CD)**
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+Authentication is configured via service account in `/home/code/myagents/config/config_agent_gcptoolkit.yml`:
+
+```yaml
+authentication:
+  service_account_path: /path/to/service-account-key.json
+
+gcp:
+  project_id: your-gcp-project-id
 ```
 
-**Option 2: User Account (Development)**
-```bash
-gcloud auth application-default login
-```
-
-### 3. Permissions
+### 3. Service Account Permissions
 
 ```bash
-# For service account
+# Grant Secret Manager access to your service account
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:YOUR_SA@YOUR_PROJECT.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
-
-# For user account
-gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
-  --member="user:YOUR_EMAIL@example.com" \
-  --role="roles/secretmanager.secretAccessor"
 ```
 
-### 4. Verify Setup
+### 4. Project ID Override (Optional)
 
-```bash
-gcloud auth application-default print-access-token  # Should output token
-```
-
-### 5. Project ID (Optional)
-
-Auto-detected from `gcloud config get-value project` or override:
+Override config file project_id with environment variable:
 ```bash
 export GCP_PROJECT="my-project-id"
 ```
@@ -112,30 +101,41 @@ gcptoolkit version
 
 ## Usage
 
-### Python API
-
-```python
-from agent_gcptoolkit.secrets import get_secret
-
-# Basic usage
-api_key = get_secret("GEMINI_API_KEY")
-
-# With explicit project ID
-api_key = get_secret("GEMINI_API_KEY", project_id="my-gcp-project")
-
-# Real-world example
-import google.generativeai as genai
-genai.configure(api_key=get_secret("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-pro")
-```
+> **Note**: For cross-worktree usage (e.g., MyAgents accessing Agent-GCPtoolkit secrets), use the CLI interface below. Python imports only work within the Agent-GCPtoolkit codebase itself due to worktree isolation.
 
 ### CLI Commands
 
 ```bash
 gcptoolkit version                      # Show version
 gcptoolkit secrets get MY_SECRET        # Get secret
+gcptoolkit secrets get MY_SECRET -q     # Get secret in quiet mode (value only)
 ./scripts/build.sh && gcptoolkit update # Update from latest build
 ```
+
+### Shell Script Integration
+
+For using secrets in shell scripts, use the `-q` (quiet) flag for clean value capture:
+
+```bash
+#!/bin/bash
+set -e
+
+# Fetch secret with quiet mode (-q) and stderr suppression
+API_TOKEN=$(gcptoolkit secrets get API_TOKEN -q 2>/dev/null)
+
+# Verify value was retrieved
+if [ -z "$API_TOKEN" ]; then
+    echo "Error: Failed to fetch API_TOKEN" >&2
+    exit 1
+fi
+
+# Use in API calls
+curl -H "Authorization: Bearer $API_TOKEN" https://api.example.com/data
+```
+
+The `-q` flag ensures only the secret value is output to stdout, making it safe for variable assignment and piping to other commands.
+
+See `/home/code/myagents/fetch_and_use_token.sh` for a complete working example.
 
 ### Secret Name Format
 
@@ -168,12 +168,11 @@ SECRET_VALUE=$(gcptoolkit secrets get MY_SECRET 2>/dev/null)
 
 2. **Memory Caching**: Secrets are cached in-memory per-process. CLI invocations spawn new processes, so caching only benefits multiple `get_secret()` calls within the same Python script.
 
-3. **Project ID Auto-Detection**: Uses `gcloud config get-value project` to determine the active GCP project
+3. **Project ID Resolution**: Uses config file or GCP_PROJECT environment variable to determine the GCP project
 
 ## Environment Variables
 
-- **GOOGLE_APPLICATION_CREDENTIALS** - Path to service account JSON (optional if using gcloud auth)
-- **GCP_PROJECT** - GCP project ID (optional, auto-detected from gcloud config)
+- **GCP_PROJECT** - GCP project ID (optional, overrides config file)
 
 ## Troubleshooting
 
@@ -183,12 +182,11 @@ SECRET_VALUE=$(gcptoolkit secrets get MY_SECRET 2>/dev/null)
 # Check if secret exists
 gcloud secrets list | grep MY_SECRET
 
-# Check/set project ID
-gcloud config get-value project
-export GCP_PROJECT="my-correct-project"
+# Verify project ID in config
+cat /home/code/myagents/config/config_agent_gcptoolkit.yml
 
-# Verify authentication
-gcloud auth application-default login
+# Override project ID if needed
+export GCP_PROJECT="my-correct-project"
 
 # Use env var fallback
 export MY_SECRET="fallback-value"
@@ -196,17 +194,15 @@ export MY_SECRET="fallback-value"
 
 ### GCP fetch failed warning
 
-Command succeeded using env var fallback. Fix authentication or suppress stderr:
+Command succeeded using env var fallback. Verify authentication is configured correctly in `/home/code/myagents/config/config_agent_gcptoolkit.yml` or suppress stderr:
 
 ```bash
-gcloud auth application-default login
-# OR
 gcptoolkit secrets get MY_SECRET 2>/dev/null
 ```
 
 ### Permission denied
 
-Verify your account has the required role in Prerequisites section 3, or use env var fallback.
+Verify your service account has the required role in Prerequisites section 3, or use env var fallback.
 
 ### Command not found
 
@@ -246,11 +242,13 @@ Agent-GCPtoolkit/
 
 ### Migration Path
 
+> **Note**: Python imports are only for code within Agent-GCPtoolkit itself. For cross-worktree usage, use the CLI.
+
 ```python
-# Old (works with deprecation warning)
+# Old (works with deprecation warning, Agent-GCPtoolkit internal use only)
 from agent_gcptoolkit.secrets import get_secret
 
-# New
+# New (Agent-GCPtoolkit internal use only)
 from backend.services.secrets.src.workflows.secret_operations import get_secret
 ```
 
@@ -262,8 +260,11 @@ Package built with UV and setuptools. Requires Python >= 3.10.
 # Install dependencies
 pip install google-cloud-secret-manager
 
-# Run from source
+# Test from source (within Agent-GCPtoolkit codebase)
 python -c "from agent_gcptoolkit.secrets import get_secret; print(get_secret('TEST_SECRET'))"
+
+# For cross-worktree usage, use CLI instead
+gcptoolkit secrets get TEST_SECRET
 ```
 
 ## Version

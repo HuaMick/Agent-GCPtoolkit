@@ -27,7 +27,7 @@ def get_secret(secret_name: str, project_id: Optional[str] = None, quiet: bool =
     Behavior:
         - Checks environment variables FIRST (fast path for development)
         - Caches secrets in memory (per-process only, NOT across CLI invocations)
-        - Auto-detects project_id from GCP_PROJECT env var or gcloud config
+        - Auto-detects project_id from GCP_PROJECT env var or config file
         - Falls back to GCP Secret Manager if env var not set (production path)
         - With quiet=False: Logs source information to stderr
         - With quiet=True: Silent operation (for scripts/production use)

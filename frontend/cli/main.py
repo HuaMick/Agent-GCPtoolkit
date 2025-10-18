@@ -100,8 +100,11 @@ Exit codes:
   2 - Usage error (invalid arguments, invalid secret name format, etc.)
 
 Environment variables:
-  GCP_PROJECT              - GCP project ID (overrides gcloud config)
-  GOOGLE_APPLICATION_CREDENTIALS - Path to service account key JSON
+  GCP_PROJECT - GCP project ID (overrides config file)
+
+Configuration:
+  Service account authentication is configured in:
+  /home/code/myagents/config/config_agent_gcptoolkit.yml
 
 For more information, see the README.
         """
@@ -179,7 +182,7 @@ Exit codes:
     )
     get_parser.add_argument(
         "--project-id",
-        help="GCP project ID (auto-detected from GCP_PROJECT env var or gcloud config if not provided)"
+        help="GCP project ID (auto-detected from GCP_PROJECT env var or config file if not provided)"
     )
     get_parser.add_argument(
         "-q", "--quiet",

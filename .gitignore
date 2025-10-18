@@ -1,3 +1,7 @@
+# Authentication files
+secrets/*
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -10,3 +14,4 @@ build-artifacts/*
 !build-artifacts/.gitkeep
 !build-artifacts/dist/.gitkeep
 !build-artifacts/build/.gitkeep
+

@@ -1,11 +1,21 @@
 """GCP Secret Manager client wrapper."""
 import os
 import logging
-import subprocess
 from typing import Optional
 from google.cloud import secretmanager
+from .config_loader import load_config, ConfigError
 
 logger = logging.getLogger(__name__)
+
+# Load configuration at module init
+try:
+    _CONFIG = load_config()
+    # Set GOOGLE_APPLICATION_CREDENTIALS from config
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = _CONFIG['authentication']['service_account_path']
+    logger.info(f"Set GOOGLE_APPLICATION_CREDENTIALS from config: {_CONFIG['authentication']['service_account_path']}")
+except ConfigError as e:
+    logger.error(f"Failed to load configuration: {e}")
+    raise
 
 
 class GCPSecretClient:
@@ -23,34 +33,32 @@ class GCPSecretClient:
 
     def get_project_id(self) -> Optional[str]:
         """
-        Auto-detect GCP project ID from multiple sources.
+        Get GCP project ID from config or environment variable.
 
         Priority order:
-        1. GCP_PROJECT environment variable (NEW - BLIND TESTING FIX)
-        2. gcloud config get-value project
+        1. GCP_PROJECT environment variable (allows override)
+        2. Config file (primary source)
 
         Returns:
             Project ID string, or None if not found
+
+        Raises:
+            ValueError: If project_id is not found in config or environment
         """
-        # BLIND TESTING FIX #2: Check GCP_PROJECT env var first
+        # Check GCP_PROJECT env var first (allows override)
         gcp_project_env = os.getenv("GCP_PROJECT")
         if gcp_project_env:
             logger.debug(f"Using GCP_PROJECT from environment: {gcp_project_env}")
             return gcp_project_env
 
-        # Fallback to gcloud config
-        try:
-            result = subprocess.run(
-                ["gcloud", "config", "get-value", "project"],
-                capture_output=True, text=True, check=True
-            )
-            project_id = result.stdout.strip()
-            if project_id:
-                logger.debug(f"Using project from gcloud config: {project_id}")
-                return project_id
-        except Exception as e:
-            logger.warning(f"Failed to auto-detect project_id: {e}")
+        # Use config file project_id
+        if _CONFIG and 'gcp' in _CONFIG and 'project_id' in _CONFIG['gcp']:
+            project_id = _CONFIG['gcp']['project_id']
+            logger.debug(f"Using project_id from config: {project_id}")
+            return project_id
 
+        # No project ID found
+        logger.error("Project ID not found. Please set GCP_PROJECT environment variable or configure project_id in /home/code/myagents/config/config_agent_gcptoolkit.yml")
         return None
 
     def fetch_secret(self, secret_name: str, project_id: str, quiet: bool = False) -> Optional[str]:
