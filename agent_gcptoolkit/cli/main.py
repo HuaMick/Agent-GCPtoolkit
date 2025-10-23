@@ -63,7 +63,7 @@ def cmd_reinstall(args):
 
 def cmd_secrets_get(args):
     """Get a secret from GCP Secret Manager."""
-    from backend.services.secrets.src.workflows.secret_operations import get_secret
+    from agent_gcptoolkit.secrets.workflows.secret_operations import get_secret
 
     # BLIND TESTING FIX #8: Validate secret name format
     validate_secret_name(args.secret_name)

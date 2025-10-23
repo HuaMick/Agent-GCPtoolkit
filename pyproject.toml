@@ -13,16 +13,13 @@ dependencies = [
 ]
 
 [project.scripts]
-gcptoolkit = "frontend.cli.main:main"
+gcptoolkit = "agent_gcptoolkit.cli.main:main"
 
 [tool.setuptools]
 packages = [
-    "backend",
-    "backend.services",
-    "backend.services.secrets",
-    "backend.services.secrets.src",
-    "backend.services.secrets.src.domains",
-    "backend.services.secrets.src.workflows",
-    "frontend",
-    "frontend.cli",
+    "agent_gcptoolkit",
+    "agent_gcptoolkit.cli",
+    "agent_gcptoolkit.secrets",
+    "agent_gcptoolkit.secrets.domains",
+    "agent_gcptoolkit.secrets.workflows",
 ]
