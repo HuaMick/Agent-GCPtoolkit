@@ -1,21 +1,44 @@
 """GCP Secret Manager client wrapper."""
 import os
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from google.cloud import secretmanager
 from .config_loader import load_config, ConfigError
 
 logger = logging.getLogger(__name__)
 
-# Load configuration at module init
-try:
-    _CONFIG = load_config()
-    # Set GOOGLE_APPLICATION_CREDENTIALS from config
-    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = _CONFIG['authentication']['service_account_path']
-    logger.info(f"Set GOOGLE_APPLICATION_CREDENTIALS from config: {_CONFIG['authentication']['service_account_path']}")
-except ConfigError as e:
-    logger.error(f"Failed to load configuration: {e}")
-    raise
+# Lazy loading: defer config loading until actually needed
+# This allows CLI commands like --help to run without requiring a config file
+_CONFIG: Optional[Dict[str, Any]] = None
+_CONFIG_LOADED = False
+
+
+def _get_config() -> Dict[str, Any]:
+    """
+    Lazy load configuration on first use.
+
+    This function loads the config file only when GCP operations are actually needed,
+    not at import time. This allows commands like 'myagents --help' to run without
+    requiring a config file to exist.
+
+    Returns:
+        Configuration dictionary
+
+    Raises:
+        ConfigError: If config file is missing or invalid
+    """
+    global _CONFIG, _CONFIG_LOADED
+
+    if not _CONFIG_LOADED:
+        _CONFIG = load_config()
+        _CONFIG_LOADED = True
+
+        # Set GOOGLE_APPLICATION_CREDENTIALS from config
+        if _CONFIG and 'authentication' in _CONFIG and 'service_account_path' in _CONFIG['authentication']:
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = _CONFIG['authentication']['service_account_path']
+            logger.info(f"Set GOOGLE_APPLICATION_CREDENTIALS from config: {_CONFIG['authentication']['service_account_path']}")
+
+    return _CONFIG
 
 
 class GCPSecretClient:
@@ -51,14 +74,20 @@ class GCPSecretClient:
             logger.debug(f"Using GCP_PROJECT from environment: {gcp_project_env}")
             return gcp_project_env
 
-        # Use config file project_id
-        if _CONFIG and 'gcp' in _CONFIG and 'project_id' in _CONFIG['gcp']:
-            project_id = _CONFIG['gcp']['project_id']
-            logger.debug(f"Using project_id from config: {project_id}")
-            return project_id
+        # Lazy load config only when needed
+        try:
+            config = _get_config()
+            # Use config file project_id
+            if config and 'gcp' in config and 'project_id' in config['gcp']:
+                project_id = config['gcp']['project_id']
+                logger.debug(f"Using project_id from config: {project_id}")
+                return project_id
+        except ConfigError as e:
+            logger.error(f"Failed to load config: {e}")
+            return None
 
         # No project ID found
-        logger.error("Project ID not found. Please set GCP_PROJECT environment variable or configure project_id in /home/code/myagents/config/config_agent_gcptoolkit.yml")
+        logger.error("Project ID not found. Please set GCP_PROJECT environment variable or configure project_id in config file")
         return None
 
     def fetch_secret(self, secret_name: str, project_id: str, quiet: bool = False) -> Optional[str]:

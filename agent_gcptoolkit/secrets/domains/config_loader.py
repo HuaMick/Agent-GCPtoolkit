@@ -1,12 +1,41 @@
 """Configuration loader for Agent-GCPtoolkit."""
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import yaml
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH = "/home/code/myagents/config/config_agent_gcptoolkit.yml"
+# Support environment variable override with fallback to relative path
+# This allows different environments to use different config locations
+def _get_config_path() -> str:
+    """
+    Get config file path from environment variable or use default.
+
+    Priority order:
+    1. GCPTOOLKIT_CONFIG_PATH environment variable (absolute path)
+    2. Default relative path: config/config_agent_gcptoolkit.yml (relative to git root)
+
+    Returns:
+        Absolute path to config file
+    """
+    env_path = os.getenv("GCPTOOLKIT_CONFIG_PATH")
+    if env_path:
+        return env_path
+
+    # Default to relative path from worktree root
+    # Agent-GCPtoolkit is at /home/code/myagents/Agent-GCPtoolkit
+    # Config is at /home/code/myagents/config/
+    # So we need to go up to the worktree root (one level above Agent-GCPtoolkit)
+    package_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+    worktree_root = os.path.dirname(package_root)
+    return os.path.join(
+        worktree_root,
+        "config",
+        "config_agent_gcptoolkit.yml"
+    )
+
+CONFIG_PATH = _get_config_path()
 
 
 class ConfigError(Exception):
