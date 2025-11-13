@@ -4,6 +4,7 @@ import os
 import argparse
 import subprocess
 import logging
+import re
 from pathlib import Path
 
 from .validators import validate_secret_name
@@ -17,6 +18,29 @@ logging.basicConfig(
     stream=sys.stderr
 )
 logger = logging.getLogger(__name__)
+
+
+def _validate_pyproject_name(pyproject_path: Path, expected_name: str = "agent-gcptoolkit") -> bool:
+    """
+    Validate that pyproject.toml contains the expected package name.
+
+    Args:
+        pyproject_path: Path to pyproject.toml file
+        expected_name: Expected package name (default: "agent-gcptoolkit")
+
+    Returns:
+        True if package name matches, False otherwise
+    """
+    try:
+        with open(pyproject_path) as f:
+            for line in f:
+                # Match: name = "agent-gcptoolkit" or name = 'agent-gcptoolkit'
+                if match := re.match(r'^name\s*=\s*["\']([^"\']+)["\']', line.strip()):
+                    return match.group(1) == expected_name
+        return False
+    except Exception as e:
+        logger.debug(f"Could not validate pyproject.toml: {e}")
+        return False
 
 
 def _get_package_root() -> Path:
@@ -47,7 +71,8 @@ def _get_package_root() -> Path:
 
     # 2. Development mode detection (relative to this file)
     module_path = Path(__file__).parent.parent.parent
-    if (module_path / "pyproject.toml").exists():
+    pyproject = module_path / "pyproject.toml"
+    if pyproject.exists() and _validate_pyproject_name(pyproject):
         logger.debug(f"Using development mode path: {module_path}")
         return module_path
 
@@ -67,14 +92,16 @@ def _get_package_root() -> Path:
 
     # 4. Fallback to current directory
     cwd = Path.cwd()
-    if (cwd / "pyproject.toml").exists():
+    pyproject = cwd / "pyproject.toml"
+    if pyproject.exists() and _validate_pyproject_name(pyproject):
         logger.debug(f"Using current working directory: {cwd}")
         return cwd
 
     # 5. Last resort: try to find pyproject.toml in parent directories
     current = Path.cwd()
     for parent in [current] + list(current.parents):
-        if (parent / "pyproject.toml").exists() and (parent / "agent_gcptoolkit").exists():
+        pyproject = parent / "pyproject.toml"
+        if pyproject.exists() and _validate_pyproject_name(pyproject):
             logger.debug(f"Found package root in parent directory: {parent}")
             return parent
 
@@ -184,6 +211,122 @@ def cmd_rebuild(args):
     cmd_update(args)
 
 
+def cmd_config_set_path(args):
+    """Set config file path preference."""
+    from agent_gcptoolkit.secrets.domains.preferences import set_preference
+
+    config_path = Path(args.path).resolve()
+
+    # Validate that the path exists
+    if not config_path.exists():
+        print(f"Error: Config file does not exist: {config_path}", file=sys.stderr)
+        sys.exit(1)
+
+    if not config_path.is_file():
+        print(f"Error: Path is not a file: {config_path}", file=sys.stderr)
+        sys.exit(1)
+
+    # Store absolute path in preferences
+    set_preference("config_path", str(config_path))
+    print(f"Config path set to: {config_path}")
+
+
+def cmd_config_show(args):
+    """Show current config file path."""
+    from agent_gcptoolkit.secrets.domains.preferences import get_preference
+
+    config_path_pref = get_preference("config_path")
+
+    if config_path_pref:
+        config_path = Path(config_path_pref)
+        if config_path.exists():
+            print(f"Config path: {config_path}")
+            print("Source: preference")
+        else:
+            print(f"Config path (from preference, but file not found): {config_path}")
+            print("Source: preference")
+    else:
+        default_config = Path.home() / ".config" / "agent-gcptoolkit" / "config.yml"
+        if default_config.exists():
+            print(f"Config path: {default_config}")
+            print("Source: default")
+        else:
+            print(f"Config path: {default_config}")
+            print("Source: default (file not found)")
+
+
+def cmd_config_clear(args):
+    """Clear config path preference."""
+    from agent_gcptoolkit.secrets.domains.preferences import clear_preference
+
+    clear_preference("config_path")
+    default_config = Path.home() / ".config" / "agent-gcptoolkit" / "config.yml"
+    print(f"Config path preference cleared. Will use default: {default_config}")
+
+
+def cmd_config_init(args):
+    """Interactive config setup."""
+    from agent_gcptoolkit.secrets.domains.preferences import set_preference
+
+    default_config = Path.home() / ".config" / "agent-gcptoolkit" / "config.yml"
+
+    print("=== Agent-GCPtoolkit Configuration Setup ===\n")
+    print(f"Default config location: {default_config}\n")
+
+    # Check if config already exists
+    if default_config.exists():
+        print(f"Configuration file already exists at: {default_config}")
+        response = input("Do you want to use a different config file? (y/N): ").strip().lower()
+        if response != 'y':
+            print(f"\nUsing existing config at: {default_config}")
+            return
+    else:
+        # Ask if user wants to copy existing config or use default location
+        print("Choose an option:")
+        print("1. Copy an existing config file to default location")
+        print("2. Point to an existing config file at a different location")
+        print("3. Cancel (manually create config file later)")
+
+        choice = input("\nEnter choice (1-3): ").strip()
+
+        if choice == "1":
+            source_path = input("Enter path to existing config file: ").strip()
+            source = Path(source_path).expanduser().resolve()
+
+            if not source.exists():
+                print(f"Error: File not found: {source}", file=sys.stderr)
+                sys.exit(1)
+
+            # Create directory and copy file
+            default_config.parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copy2(source, default_config)
+            print(f"\nConfig copied to: {default_config}")
+            return
+
+        elif choice == "2":
+            config_path = input("Enter path to config file: ").strip()
+            config_file = Path(config_path).expanduser().resolve()
+
+            if not config_file.exists():
+                print(f"Error: File not found: {config_file}", file=sys.stderr)
+                sys.exit(1)
+
+            set_preference("config_path", str(config_file))
+            print(f"\nConfig path set to: {config_file}")
+            return
+
+        elif choice == "3":
+            print("\nSetup cancelled.")
+            print(f"Create your config file at: {default_config}")
+            print("Or use: myagents config set-path <path>")
+            return
+
+        else:
+            print("Invalid choice.", file=sys.stderr)
+            sys.exit(2)
+
+
 def cmd_secrets_get(args):
     """Get a secret from GCP Secret Manager."""
     from agent_gcptoolkit.secrets.workflows.secret_operations import get_secret
@@ -213,8 +356,8 @@ def main():
         2 - Usage errors (invalid arguments, invalid secret name format, etc.)
     """
     parser = argparse.ArgumentParser(
-        prog="gcptoolkit",
-        description="Agent-GCPtoolkit CLI - GCP Secret Manager toolkit",
+        prog="myagents",
+        description="Agent-GCPtoolkit CLI - GCP Secret Manager toolkit (accessed via myagents)",
         epilog="""
 Exit codes:
   0 - Success
@@ -225,9 +368,11 @@ Environment variables:
   GCP_PROJECT - GCP project ID (overrides config file)
 
 Configuration:
-  Service account authentication is configured in:
-  /home/code/myagents/config/config_agent_gcptoolkit.yml
+  Default location: ~/.config/agent-gcptoolkit/config.yml
+  Custom path: Set with 'myagents config set-path <path>'
+  View current: Run 'myagents config show'
 
+Note: As of v0.2.0, use the unified 'myagents' CLI (e.g., 'myagents secrets get', 'myagents config show').
 For more information, see the README.
         """
     )
@@ -299,6 +444,71 @@ Prerequisites:
         """
     )
 
+    # config command
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Configuration management",
+        description="Manage agent-gcptoolkit configuration"
+    )
+    config_subparsers = config_parser.add_subparsers(dest="config_command")
+
+    # config set-path command
+    config_set_path_parser = config_subparsers.add_parser(
+        "set-path",
+        help="Set config file path",
+        description="""
+Set the configuration file path preference.
+
+This stores the absolute path to your config file in:
+~/.config/agent-gcptoolkit/preferences.json
+
+The path will be validated before storing.
+        """
+    )
+    config_set_path_parser.add_argument(
+        "path",
+        help="Path to config file"
+    )
+
+    # config show command
+    config_show_parser = config_subparsers.add_parser(
+        "show",
+        help="Show current config path",
+        description="""
+Display the current configuration file path and its source.
+
+Sources:
+  - preference: Path set via 'config set-path'
+  - default: Default XDG location (~/.config/agent-gcptoolkit/config.yml)
+        """
+    )
+
+    # config clear command
+    config_clear_parser = config_subparsers.add_parser(
+        "clear",
+        help="Clear config path preference",
+        description="""
+Remove the config path preference.
+
+After clearing, the default location will be used:
+~/.config/agent-gcptoolkit/config.yml
+        """
+    )
+
+    # config init command
+    config_init_parser = config_subparsers.add_parser(
+        "init",
+        help="Interactive config setup",
+        description="""
+Interactive setup wizard for agent-gcptoolkit configuration.
+
+Options:
+  1. Copy existing config to default location
+  2. Point to existing config at different location
+  3. Cancel and set up manually
+        """
+    )
+
     # secrets command
     secrets_parser = subparsers.add_parser(
         "secrets",
@@ -361,6 +571,18 @@ Exit codes:
             cmd_build(args)
         elif args.command == "rebuild":
             cmd_rebuild(args)
+        elif args.command == "config":
+            if args.config_command == "set-path":
+                cmd_config_set_path(args)
+            elif args.config_command == "show":
+                cmd_config_show(args)
+            elif args.config_command == "clear":
+                cmd_config_clear(args)
+            elif args.config_command == "init":
+                cmd_config_init(args)
+            else:
+                config_parser.print_help()
+                sys.exit(2)
         elif args.command == "secrets":
             if args.secrets_command == "get":
                 cmd_secrets_get(args)
