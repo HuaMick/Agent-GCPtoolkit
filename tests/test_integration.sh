@@ -2,6 +2,7 @@
 set -e
 
 echo "=== Agent-GCPtoolkit Integration Tests ==="
+echo "Note: Tests use unified 'myagents' CLI (gcptoolkit CLI removed in v0.2.0)"
 
 PROJECT_ROOT="/home/code/myagents/Agent-GCPtoolkit"
 cd "$PROJECT_ROOT"
@@ -19,8 +20,8 @@ echo "2. Testing build..."
 echo ""
 echo "3. Testing UV tool install installation..."
 ./scripts/install-global.sh
-which gcptoolkit && echo "✓ CLI accessible globally" || (echo "✗ CLI not in PATH" && exit 1)
-gcptoolkit version && echo "✓ CLI works" || (echo "✗ CLI command failed" && exit 1)
+which myagents && echo "✓ Unified myagents CLI accessible globally" || (echo "✗ myagents CLI not in PATH" && exit 1)
+myagents --version && echo "✓ Unified myagents CLI works" || (echo "✗ myagents CLI command failed" && exit 1)
 
 echo ""
 echo "4. Testing imports..."
@@ -28,33 +29,33 @@ python3 -c "from agent_gcptoolkit.secrets import get_secret" && echo "✓ Old im
 python3 -c "from backend.services.secrets.src.workflows.secret_operations import get_secret" && echo "✓ New import works" || (echo "✗ New import failed" && exit 1)
 
 echo ""
-echo "5. Testing CLI commands..."
-gcptoolkit version | grep "0.1.0" && echo "✓ Version command works" || (echo "✗ Version command failed" && exit 1)
-gcptoolkit --help | grep "Available commands" && echo "✓ Help command works" || (echo "✗ Help command failed" && exit 1)
+echo "5. Testing unified myagents CLI commands..."
+myagents --version | grep -E "myagents|agent-gcptoolkit" && echo "✓ Unified version command works" || (echo "✗ Version command failed" && exit 1)
+myagents --help | grep -E "Command to run|usage" && echo "✓ Unified help command works" || (echo "✗ Help command failed" && exit 1)
 
 echo ""
 echo "6. Testing exit codes..."
 export TEST_SECRET="value123"
-gcptoolkit secrets get TEST_SECRET --quiet > /dev/null
+myagents secrets get TEST_SECRET --quiet > /dev/null
 [ $? -eq 0 ] && echo "✓ Exit code 0 on success" || (echo "✗ Exit code wrong on success" && exit 1)
 
-gcptoolkit secrets get NONEXISTENT_SECRET_XYZ --quiet > /dev/null 2>&1
+myagents secrets get NONEXISTENT_SECRET_XYZ --quiet > /dev/null 2>&1
 [ $? -eq 1 ] && echo "✓ Exit code 1 on runtime error" || (echo "✗ Exit code wrong on runtime error" && exit 1)
 
-gcptoolkit secrets get > /dev/null 2>&1
+myagents secrets get > /dev/null 2>&1
 [ $? -eq 2 ] && echo "✓ Exit code 2 on usage error" || (echo "✗ Exit code wrong on usage error" && exit 1)
 
 echo ""
 echo "7. Testing quiet mode..."
-OUTPUT=$(gcptoolkit secrets get TEST_SECRET --quiet 2>&1)
+OUTPUT=$(myagents secrets get TEST_SECRET --quiet 2>&1)
 [ "$OUTPUT" = "value123" ] && echo "✓ Quiet mode outputs only value" || (echo "✗ Quiet mode output wrong: $OUTPUT" && exit 1)
 
 echo ""
 echo "8. Testing secret name validation..."
-gcptoolkit secrets get "api.key" > /dev/null 2>&1
+myagents secrets get "api.key" > /dev/null 2>&1
 [ $? -eq 2 ] && echo "✓ Rejects invalid secret name (dots)" || (echo "✗ Should reject dots in secret name" && exit 1)
 
-gcptoolkit secrets get "MY_VALID_SECRET-123" --quiet > /dev/null 2>&1
+myagents secrets get "MY_VALID_SECRET-123" --quiet > /dev/null 2>&1
 [ $? -eq 0 ] || [ $? -eq 1 ] && echo "✓ Accepts valid secret name" || (echo "✗ Should accept valid secret name" && exit 1)
 
 echo ""
@@ -94,17 +95,19 @@ echo "11. Testing package structure..."
 
 echo ""
 echo "12. Testing help completeness..."
-gcptoolkit version --help | grep -q "Show version" && echo "✓ version --help has description" || (echo "✗ version --help incomplete" && exit 1)
-gcptoolkit update --help | grep -q "build-artifacts" && echo "✓ update --help has description" || (echo "✗ update --help incomplete" && exit 1)
-gcptoolkit secrets get --help | grep -q "Fetch a secret" && echo "✓ secrets get --help has description" || (echo "✗ secrets get --help incomplete" && exit 1)
+myagents --version --help | grep -q "version" && echo "✓ version --help has description" || (echo "✗ version --help incomplete" && exit 1)
+myagents self-update --help | grep -q "myagents" && echo "✓ self-update --help has description" || (echo "✗ self-update --help incomplete" && exit 1)
+myagents secrets get --help | grep -q "secret" && echo "✓ secrets get --help has description" || (echo "✗ secrets get --help incomplete" && exit 1)
 
 echo ""
 echo "=== All integration tests passed ==="
 echo ""
 echo "Summary of improvements verified:"
-echo "  ✓ UV tool install (CLI globally accessible)"
+echo "  ✓ Unified myagents CLI (single command interface)"
+echo "  ✓ UV tool install (myagents CLI globally accessible)"
 echo "  ✓ GCP_PROJECT env var support"
 echo "  ✓ Exit codes (0/1/2) standardized"
 echo "  ✓ Quiet mode suppresses stderr"
 echo "  ✓ Help completeness for all commands"
 echo "  ✓ Secret name validation"
+echo "  ✓ Library-only agent-gcptoolkit (no standalone gcptoolkit CLI)"

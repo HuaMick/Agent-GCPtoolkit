@@ -4,7 +4,6 @@ import os
 import argparse
 import subprocess
 import logging
-import re
 from pathlib import Path
 
 from .validators import validate_secret_name
@@ -20,195 +19,106 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _validate_pyproject_name(pyproject_path: Path, expected_name: str = "agent-gcptoolkit") -> bool:
-    """
-    Validate that pyproject.toml contains the expected package name.
-
-    Args:
-        pyproject_path: Path to pyproject.toml file
-        expected_name: Expected package name (default: "agent-gcptoolkit")
-
-    Returns:
-        True if package name matches, False otherwise
-    """
+def _is_workspace_install():
+    """Check if running from a workspace/editable install."""
     try:
-        with open(pyproject_path) as f:
-            for line in f:
-                # Match: name = "agent-gcptoolkit" or name = 'agent-gcptoolkit'
-                if match := re.match(r'^name\s*=\s*["\']([^"\']+)["\']', line.strip()):
-                    return match.group(1) == expected_name
-        return False
-    except Exception as e:
-        logger.debug(f"Could not validate pyproject.toml: {e}")
+        import pkg_resources
+        dist = pkg_resources.get_distribution("agent-gcptoolkit")
+        # Editable installs have location pointing to source directory
+        return dist.location and "Agent-GCPtoolkit" in dist.location
+    except:
         return False
 
 
-def _get_package_root() -> Path:
-    """
-    Get the package root directory, trying multiple detection methods.
+def cmd_self_update(args):
+    """Update agent-gcptoolkit from the artifact registry."""
+    # Check if running from workspace install
+    if _is_workspace_install():
+        print("Error: self-update disabled in workspace mode. Use 'uv sync' instead.", file=sys.stderr)
+        sys.exit(1)
 
-    Priority order:
-    1. GCPTOOLKIT_ROOT environment variable (if set)
-    2. Development mode (if pyproject.toml exists in expected location)
-    3. Git worktree detection (if .git file exists)
-    4. Current working directory
-    5. Search parent directories for pyproject.toml
-
-    Returns:
-        Path to package root
-
-    Raises:
-        RuntimeError: If package root cannot be determined
-    """
-    # 1. Environment variable override
-    env_root = os.getenv("GCPTOOLKIT_ROOT")
-    if env_root:
-        root = Path(env_root)
-        if root.exists() and (root / "pyproject.toml").exists():
-            logger.debug(f"Using GCPTOOLKIT_ROOT: {root}")
-            return root
-        logger.warning(f"GCPTOOLKIT_ROOT points to invalid path: {env_root}")
-
-    # 2. Development mode detection (relative to this file)
-    module_path = Path(__file__).parent.parent.parent
-    pyproject = module_path / "pyproject.toml"
-    if pyproject.exists() and _validate_pyproject_name(pyproject):
-        logger.debug(f"Using development mode path: {module_path}")
-        return module_path
-
-    # 3. Git worktree detection
-    git_file = module_path / ".git"
-    if git_file.exists():
-        # Read the worktree gitdir from .git file
-        try:
-            with open(git_file) as f:
-                gitdir_line = f.read().strip()
-                if gitdir_line.startswith("gitdir:"):
-                    # This is a worktree, use the module path
-                    logger.debug(f"Using git worktree path: {module_path}")
-                    return module_path
-        except Exception as e:
-            logger.debug(f"Could not read .git file: {e}")
-
-    # 4. Fallback to current directory
-    cwd = Path.cwd()
-    pyproject = cwd / "pyproject.toml"
-    if pyproject.exists() and _validate_pyproject_name(pyproject):
-        logger.debug(f"Using current working directory: {cwd}")
-        return cwd
-
-    # 5. Last resort: try to find pyproject.toml in parent directories
-    current = Path.cwd()
-    for parent in [current] + list(current.parents):
-        pyproject = parent / "pyproject.toml"
-        if pyproject.exists() and _validate_pyproject_name(pyproject):
-            logger.debug(f"Found package root in parent directory: {parent}")
-            return parent
-
-    raise RuntimeError(
-        "Could not determine package root. "
-        "Please set GCPTOOLKIT_ROOT environment variable or run from package directory."
+    print("Updating agent-gcptoolkit from artifact registry...")
+    result = subprocess.run(
+        ["uv", "pip", "install", "--system", "--upgrade", "agent-gcptoolkit"],
+        check=False
     )
 
+    if result.returncode == 0:
+        print("Success: agent-gcptoolkit updated successfully. Restart your terminal to use the new version.")
+    else:
+        print("Error: Update failed. Check registry authentication and connectivity.", file=sys.stderr)
 
-# Detect package root
-try:
-    PACKAGE_ROOT = _get_package_root()
-except RuntimeError as e:
-    # If we can't determine the package root, set it to None and warn
-    # This allows the CLI to still load, but build/update commands will fail gracefully
-    PACKAGE_ROOT = None
-    logger.warning(f"Warning: {e}")
+    sys.exit(result.returncode)
 
-BUILD_ARTIFACTS_DIR = PACKAGE_ROOT / "build-artifacts" if PACKAGE_ROOT else None
+
+def cmd_registry_info(args):
+    """Show artifact registry configuration and status."""
+    import pkg_resources
+
+    print("=== Agent-GCPtoolkit Registry Information ===\n")
+
+    # Show current version
+    try:
+        version = pkg_resources.get_distribution("agent-gcptoolkit").version
+        print(f"Current version: {version}")
+    except:
+        print("Current version: Unable to determine")
+
+    # Show registry configuration from pip (uv pip doesn't support config command)
+    print("\nRegistry Configuration:")
+    result = subprocess.run(
+        ["pip", "config", "get", "global.extra-index-url"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        print(f"  Extra index URL: {result.stdout.strip()}")
+    else:
+        print("  No extra index URL configured")
+        print("  Configure with: pip config set global.extra-index-url <registry-url>")
+
+
+def cmd_registry_check_auth(args):
+    """Check artifact registry authentication status."""
+    print("Checking artifact registry authentication...\n")
+
+    # Check if keyring is installed
+    try:
+        import keyring
+        print("Success: keyring package installed")
+    except ImportError:
+        print("Error: keyring package not installed")
+        print("  Install with: uv pip install keyring keyrings.google-artifactregistry-auth")
+        sys.exit(1)
+
+    # Check if GCP keyring is installed
+    try:
+        import keyrings.google_artifactregistry_auth
+        print("Success: keyrings.google-artifactregistry-auth installed")
+    except ImportError:
+        print("Error: keyrings.google-artifactregistry-auth not installed")
+        print("  Install with: uv pip install keyrings.google-artifactregistry-auth")
+        sys.exit(1)
+
+    # Check gcloud authentication
+    result = subprocess.run(
+        ["gcloud", "auth", "list", "--filter=status:ACTIVE", "--format=value(account)"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        print(f"Success: GCP authenticated as: {result.stdout.strip()}")
+    else:
+        print("Error: No active GCP authentication")
+        print("  Authenticate with: gcloud auth login")
+        sys.exit(1)
+
+    print("\nSuccess: All authentication checks passed")
 
 
 def cmd_version(args):
     """Show version information."""
     print(f"agent-gcptoolkit {VERSION}")
-    if args.verbose:
-        print(f"Package root: {PACKAGE_ROOT}")
-
-
-def cmd_update(args):
-    """Reinstall from latest build artifacts."""
-    if PACKAGE_ROOT is None or BUILD_ARTIFACTS_DIR is None:
-        print(
-            "Error: Package root not found. "
-            "Set GCPTOOLKIT_ROOT environment variable or run from package directory.",
-            file=sys.stderr
-        )
-        sys.exit(1)
-
-    print(f"=== Updating agent-gcptoolkit from {BUILD_ARTIFACTS_DIR}/dist/ ===")
-
-    # Find the wheel file
-    dist_dir = BUILD_ARTIFACTS_DIR / "dist"
-    if not dist_dir.exists():
-        print(f"Error: {dist_dir} does not exist. Run build first.", file=sys.stderr)
-        sys.exit(1)
-
-    wheels = list(dist_dir.glob("agent_gcptoolkit-*.whl"))
-    if not wheels:
-        print(f"Error: No wheel found in {dist_dir}. Run build first.", file=sys.stderr)
-        sys.exit(1)
-
-    wheel_path = wheels[0]
-    print(f"Installing: {wheel_path}")
-
-    try:
-        subprocess.run(
-            ["uv", "pip", "install", "--force-reinstall", str(wheel_path)],
-            check=True
-        )
-        print("=== Update complete ===")
-    except subprocess.CalledProcessError as e:
-        print(f"Error: Update failed: {e}", file=sys.stderr)
-        sys.exit(1)
-
-
-def cmd_reinstall(args):
-    """Reinstall from build artifacts (alias for update)."""
-    cmd_update(args)
-
-
-def cmd_build(args):
-    """Build the package using uv build."""
-    if PACKAGE_ROOT is None or BUILD_ARTIFACTS_DIR is None:
-        print(
-            "Error: Package root not found. "
-            "Set GCPTOOLKIT_ROOT environment variable or run from package directory.",
-            file=sys.stderr
-        )
-        sys.exit(1)
-
-    print(f"=== Building agent-gcptoolkit ===")
-
-    try:
-        # Run uv build from package root
-        subprocess.run(
-            ["uv", "build", "--out-dir", str(BUILD_ARTIFACTS_DIR / "dist")],
-            cwd=PACKAGE_ROOT,
-            check=True
-        )
-        print(f"=== Build complete. Artifacts in {BUILD_ARTIFACTS_DIR}/dist/ ===")
-    except subprocess.CalledProcessError as e:
-        print(f"Error: Build failed: {e}", file=sys.stderr)
-        sys.exit(1)
-    except FileNotFoundError:
-        print("Error: 'uv' command not found. Please install uv package manager.", file=sys.stderr)
-        sys.exit(1)
-
-
-def cmd_rebuild(args):
-    """Build and reinstall the package."""
-    print(f"=== Rebuilding agent-gcptoolkit (build + reinstall) ===")
-
-    # First, run build
-    cmd_build(args)
-
-    # Then, run update/reinstall
-    cmd_update(args)
 
 
 def cmd_config_set_path(args):
@@ -357,7 +267,7 @@ def main():
     """
     parser = argparse.ArgumentParser(
         prog="myagents",
-        description="Agent-GCPtoolkit CLI - GCP Secret Manager toolkit (accessed via myagents)",
+        description="Agent-GCPtoolkit CLI - GCP Secret Manager toolkit with artifact registry integration",
         epilog="""
 Exit codes:
   0 - Success
@@ -372,7 +282,7 @@ Configuration:
   Custom path: Set with 'myagents config set-path <path>'
   View current: Run 'myagents config show'
 
-Note: As of v0.2.0, use the unified 'myagents' CLI (e.g., 'myagents secrets get', 'myagents config show').
+Note: Use the unified 'myagents' CLI (e.g., 'myagents secrets get', 'myagents config show', 'myagents self-update').
 For more information, see the README.
         """
     )
@@ -385,63 +295,34 @@ For more information, see the README.
         help="Show version information",
         description="Display the current version of agent-gcptoolkit"
     )
-    version_parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Show additional information (package root path)"
+
+    # self-update command
+    self_update_parser = subparsers.add_parser(
+        "self-update",
+        help="Update agent-gcptoolkit from artifact registry",
+        description="Update to the latest version of agent-gcptoolkit from the GCP Artifact Registry"
     )
 
-    # update command
-    update_parser = subparsers.add_parser(
-        "update",
-        help="Update from latest build artifacts",
-        description="""
-Reinstall agent-gcptoolkit from the latest wheel in build-artifacts/dist/.
+    # registry command with subcommands
+    registry_parser = subparsers.add_parser(
+        "registry",
+        help="Artifact registry operations",
+        description="Manage artifact registry configuration and authentication"
+    )
+    registry_subparsers = registry_parser.add_subparsers(dest="registry_command")
 
-This is useful during development to test changes without manually
-running build and install scripts.
-
-Prerequisites:
-  - Wheel must exist in build-artifacts/dist/ (run ./scripts/build.sh first)
-  - UV package manager must be installed
-        """
+    # registry info
+    registry_info_parser = registry_subparsers.add_parser(
+        "info",
+        help="Show registry configuration",
+        description="Display current artifact registry configuration and package version"
     )
 
-    # reinstall command
-    reinstall_parser = subparsers.add_parser(
-        "reinstall",
-        help="Reinstall from build artifacts (alias for update)",
-        description="Alias for the 'update' command. Reinstalls from latest build artifacts."
-    )
-
-    # build command
-    build_parser = subparsers.add_parser(
-        "build",
-        help="Build the package",
-        description="""
-Build agent-gcptoolkit using uv build.
-
-Creates wheel and source distribution in build-artifacts/dist/.
-
-Prerequisites:
-  - UV package manager must be installed
-        """
-    )
-
-    # rebuild command
-    rebuild_parser = subparsers.add_parser(
-        "rebuild",
-        help="Build and reinstall the package",
-        description="""
-Build and reinstall agent-gcptoolkit in one step.
-
-This combines the 'build' and 'update' commands for convenience:
-  1. Builds the package using uv build
-  2. Reinstalls from the newly created wheel
-
-Prerequisites:
-  - UV package manager must be installed
-        """
+    # registry check-auth
+    registry_check_auth_parser = registry_subparsers.add_parser(
+        "check-auth",
+        help="Check registry authentication",
+        description="Verify artifact registry authentication is configured correctly"
     )
 
     # config command
@@ -563,14 +444,16 @@ Exit codes:
     try:
         if args.command == "version":
             cmd_version(args)
-        elif args.command == "update":
-            cmd_update(args)
-        elif args.command == "reinstall":
-            cmd_reinstall(args)
-        elif args.command == "build":
-            cmd_build(args)
-        elif args.command == "rebuild":
-            cmd_rebuild(args)
+        elif args.command == "self-update":
+            cmd_self_update(args)
+        elif args.command == "registry":
+            if args.registry_command == "info":
+                cmd_registry_info(args)
+            elif args.registry_command == "check-auth":
+                cmd_registry_check_auth(args)
+            else:
+                registry_parser.print_help()
+                sys.exit(2)
         elif args.command == "config":
             if args.config_command == "set-path":
                 cmd_config_set_path(args)

@@ -1,41 +1,56 @@
 """Configuration loader for Agent-GCPtoolkit."""
 import os
 import logging
+from pathlib import Path
 from typing import Dict, Any, Optional
 import yaml
 
+from .preferences import get_preference
+
 logger = logging.getLogger(__name__)
 
-# Support environment variable override with fallback to relative path
-# This allows different environments to use different config locations
+
 def _get_config_path() -> str:
     """
-    Get config file path from environment variable or use default.
+    Get config file path using XDG Base Directory standard.
 
     Priority order:
-    1. GCPTOOLKIT_CONFIG_PATH environment variable (absolute path)
-    2. Default relative path: config/config_agent_gcptoolkit.yml (relative to git root)
+    1. User preference (stored in ~/.config/agent-gcptoolkit/preferences.json)
+    2. Default location: ~/.config/agent-gcptoolkit/config.yml
 
     Returns:
         Absolute path to config file
+
+    Raises:
+        FileNotFoundError: If config file doesn't exist in any location
     """
-    env_path = os.getenv("GCPTOOLKIT_CONFIG_PATH")
-    if env_path:
-        return env_path
+    # 1. Check user preference
+    config_path_pref = get_preference("config_path")
+    if config_path_pref:
+        config_path = Path(config_path_pref)
+        if config_path.exists():
+            logger.info(f"Using config from preference: {config_path}")
+            return str(config_path)
+        else:
+            logger.warning(f"Config path from preference doesn't exist: {config_path}")
 
-    # Default to relative path from worktree root
-    # Agent-GCPtoolkit is at /home/code/myagents/Agent-GCPtoolkit
-    # Config is at /home/code/myagents/config/
-    # So we need to go up to the worktree root (one level above Agent-GCPtoolkit)
-    package_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-    worktree_root = os.path.dirname(package_root)
-    return os.path.join(
-        worktree_root,
-        "config",
-        "config_agent_gcptoolkit.yml"
+    # 2. Check default location
+    default_config = Path.home() / ".config" / "agent-gcptoolkit" / "config.yml"
+    if default_config.exists():
+        logger.info(f"Using default config location: {default_config}")
+        return str(default_config)
+
+    # Config not found - raise clear error with setup instructions
+    raise FileNotFoundError(
+        "Configuration file not found. Please set up your config file using one of these methods:\n\n"
+        "1. Use the default location:\n"
+        f"   mkdir -p {default_config.parent}\n"
+        f"   cp /path/to/your/config.yml {default_config}\n\n"
+        "2. Point to an existing config file:\n"
+        "   myagents config set-path /path/to/your/config.yml\n\n"
+        "3. Run interactive setup:\n"
+        "   myagents config init\n"
     )
-
-CONFIG_PATH = _get_config_path()
 
 
 class ConfigError(Exception):
@@ -55,29 +70,32 @@ def load_config() -> Dict[str, Any]:
     Raises:
         ConfigError: If config file is missing, invalid, or service account file doesn't exist
     """
+    # Get config path dynamically each time (not cached at module level)
+    config_path = _get_config_path()
+
     # Check if config file exists
-    if not os.path.exists(CONFIG_PATH):
+    if not os.path.exists(config_path):
         raise ConfigError(
-            f"Configuration file not found at: {CONFIG_PATH}\n"
+            f"Configuration file not found at: {config_path}\n"
             f"Please create the config file with required authentication settings."
         )
 
     # Load YAML
     try:
-        with open(CONFIG_PATH, 'r') as f:
+        with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        raise ConfigError(f"Failed to parse YAML config at {CONFIG_PATH}: {e}")
+        raise ConfigError(f"Failed to parse YAML config at {config_path}: {e}")
     except Exception as e:
-        raise ConfigError(f"Failed to read config file at {CONFIG_PATH}: {e}")
+        raise ConfigError(f"Failed to read config file at {config_path}: {e}")
 
     # Validate required fields
     if not config:
-        raise ConfigError(f"Config file at {CONFIG_PATH} is empty")
+        raise ConfigError(f"Config file at {config_path} is empty")
 
     if 'authentication' not in config:
         raise ConfigError(
-            f"Missing 'authentication' section in config at {CONFIG_PATH}\n"
+            f"Missing 'authentication' section in config at {config_path}\n"
             f"Required format:\n"
             f"authentication:\n"
             f"  type: service_account\n"
@@ -107,7 +125,7 @@ def load_config() -> Dict[str, Any]:
     if not os.path.exists(service_account_path):
         raise ConfigError(
             f"Service account file not found at: {service_account_path}\n"
-            f"Please ensure the file exists or update the path in {CONFIG_PATH}"
+            f"Please ensure the file exists or update the path in {config_path}"
         )
 
     if not os.path.isfile(service_account_path):
@@ -118,7 +136,7 @@ def load_config() -> Dict[str, Any]:
     # Validate GCP section
     if 'gcp' not in config:
         raise ConfigError(
-            f"Missing 'gcp' section in config at {CONFIG_PATH}\n"
+            f"Missing 'gcp' section in config at {config_path}\n"
             f"Required format:\n"
             f"gcp:\n"
             f"  project_id: your-project-id"
@@ -127,7 +145,7 @@ def load_config() -> Dict[str, Any]:
     if 'project_id' not in config['gcp']:
         raise ConfigError("Missing 'gcp.project_id' in config")
 
-    logger.info(f"Configuration loaded successfully from {CONFIG_PATH}")
+    logger.info(f"Configuration loaded successfully from {config_path}")
     logger.debug(f"Using service account: {service_account_path}")
     logger.debug(f"Using project ID: {config['gcp']['project_id']}")
 
