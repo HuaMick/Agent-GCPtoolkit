@@ -16,4 +16,4 @@ dependencies = [
 gcptoolkit = "agent_gcptoolkit.cli.main:main"
 
 [tool.setuptools]
-packages.find = {}
+packages.find = {where = ["."], exclude = ["tests", "tests.*", "build", "build.*"]}

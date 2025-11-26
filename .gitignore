@@ -8,6 +8,8 @@ __pycache__/
 *.egg-info/
 .venv/
 *.log
+build/
+dist/
 
 # Test files in root (use tests/ directory instead)
 /multi_secret_workflow.py
