@@ -36,7 +36,8 @@ def _get_config() -> Dict[str, Any]:
         # Set GOOGLE_APPLICATION_CREDENTIALS from config
         if _CONFIG and 'authentication' in _CONFIG and 'service_account_path' in _CONFIG['authentication']:
             os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = _CONFIG['authentication']['service_account_path']
-            logger.info(f"Set GOOGLE_APPLICATION_CREDENTIALS from config: {_CONFIG['authentication']['service_account_path']}")
+            sa_path = _CONFIG['authentication']['service_account_path']
+            logger.info(f"Set GOOGLE_APPLICATION_CREDENTIALS from config: {sa_path}")
 
     return _CONFIG
 
@@ -87,7 +88,9 @@ class GCPSecretClient:
             return None
 
         # No project ID found
-        logger.error("Project ID not found. Please set GCP_PROJECT environment variable or configure project_id in config file")
+        logger.error(
+            "Project ID not found. Set GCP_PROJECT env var or configure project_id in config"
+        )
         return None
 
     def fetch_secret(self, secret_name: str, project_id: str, quiet: bool = False) -> Optional[str]:

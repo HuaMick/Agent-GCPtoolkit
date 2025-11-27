@@ -365,7 +365,7 @@ Sources:
     )
 
     # config clear command
-    config_clear_parser = config_subparsers.add_parser(
+    _config_clear_parser = config_subparsers.add_parser(
         "clear",
         help="Clear config path preference",
         description="""
@@ -377,7 +377,7 @@ After clearing, the default location will be used:
     )
 
     # config init command
-    config_init_parser = config_subparsers.add_parser(
+    _config_init_parser = config_subparsers.add_parser(
         "init",
         help="Interactive config setup",
         description="""
