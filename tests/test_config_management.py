@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from agent_gcptoolkit.secrets.domains import preferences
 from agent_gcptoolkit.secrets.domains import config_loader

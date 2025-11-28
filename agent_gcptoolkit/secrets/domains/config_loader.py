@@ -3,7 +3,7 @@ import os
 import logging
 from pathlib import Path
 from typing import Dict, Any
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 from .preferences import get_preference
 

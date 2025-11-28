@@ -13,7 +13,7 @@ _CONFIG: Optional[Dict[str, Any]] = None
 _CONFIG_LOADED = False
 
 
-def _get_config() -> Dict[str, Any]:
+def _get_config() -> Optional[Dict[str, Any]]:
     """
     Lazy load configuration on first use.
 
