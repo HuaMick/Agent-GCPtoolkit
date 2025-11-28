@@ -1,6 +1,5 @@
 """CLI entrypoint for agent-gcptoolkit."""
 import sys
-import os
 import argparse
 import subprocess
 import logging
@@ -26,7 +25,7 @@ def _is_workspace_install():
         dist = pkg_resources.get_distribution("agent-gcptoolkit")
         # Editable installs have location pointing to source directory
         return dist.location and "Agent-GCPtoolkit" in dist.location
-    except:
+    except Exception:
         return False
 
 
@@ -61,7 +60,7 @@ def cmd_registry_info(args):
     try:
         version = pkg_resources.get_distribution("agent-gcptoolkit").version
         print(f"Current version: {version}")
-    except:
+    except Exception:
         print("Current version: Unable to determine")
 
     # Show registry configuration from pip (uv pip doesn't support config command)
@@ -84,7 +83,7 @@ def cmd_registry_check_auth(args):
 
     # Check if keyring is installed
     try:
-        import keyring
+        import keyring  # noqa: F401
         print("Success: keyring package installed")
     except ImportError:
         print("Error: keyring package not installed")
@@ -93,7 +92,7 @@ def cmd_registry_check_auth(args):
 
     # Check if GCP keyring is installed
     try:
-        import keyrings.google_artifactregistry_auth
+        import keyrings.google_artifactregistry_auth  # noqa: F401
         print("Success: keyrings.google-artifactregistry-auth installed")
     except ImportError:
         print("Error: keyrings.google-artifactregistry-auth not installed")
@@ -253,7 +252,8 @@ def cmd_secrets_get(args):
             print(f"Secret '{args.secret_name}': {secret_value}")
         sys.exit(0)
     else:
-        print(f"Error: Secret '{args.secret_name}' not found in GCP Secret Manager or environment variables", file=sys.stderr)
+        err_msg = f"Error: Secret '{args.secret_name}' not found in GCP or env"
+        print(err_msg, file=sys.stderr)
         sys.exit(1)
 
 
@@ -290,14 +290,14 @@ For more information, see the README.
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # version command
-    version_parser = subparsers.add_parser(
+    _version_parser = subparsers.add_parser(
         "version",
         help="Show version information",
         description="Display the current version of agent-gcptoolkit"
     )
 
     # self-update command
-    self_update_parser = subparsers.add_parser(
+    _self_update_parser = subparsers.add_parser(
         "self-update",
         help="Update agent-gcptoolkit from artifact registry",
         description="Update to the latest version of agent-gcptoolkit from the GCP Artifact Registry"
@@ -312,14 +312,14 @@ For more information, see the README.
     registry_subparsers = registry_parser.add_subparsers(dest="registry_command")
 
     # registry info
-    registry_info_parser = registry_subparsers.add_parser(
+    _registry_info_parser = registry_subparsers.add_parser(
         "info",
         help="Show registry configuration",
         description="Display current artifact registry configuration and package version"
     )
 
     # registry check-auth
-    registry_check_auth_parser = registry_subparsers.add_parser(
+    _registry_check_auth_parser = registry_subparsers.add_parser(
         "check-auth",
         help="Check registry authentication",
         description="Verify artifact registry authentication is configured correctly"
@@ -352,7 +352,7 @@ The path will be validated before storing.
     )
 
     # config show command
-    config_show_parser = config_subparsers.add_parser(
+    _config_show_parser = config_subparsers.add_parser(
         "show",
         help="Show current config path",
         description="""

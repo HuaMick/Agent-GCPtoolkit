@@ -7,10 +7,7 @@ This test suite validates:
 - CLI commands for config management
 """
 import json
-import os
-import tempfile
 from pathlib import Path
-from unittest import mock
 
 import pytest
 import yaml

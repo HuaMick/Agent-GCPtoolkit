@@ -4,7 +4,6 @@ Manages persistent user preferences stored in XDG Base Directory standard locati
 ~/.config/agent-gcptoolkit/preferences.json
 """
 import json
-import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 import logging

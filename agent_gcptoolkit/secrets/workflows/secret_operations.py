@@ -2,7 +2,7 @@
 import os
 import logging
 from typing import Optional
-from ..domains.models import Secret, SecretRequest
+from ..domains.models import Secret
 from ..domains.gcp_client import GCPSecretClient
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import yaml
 
 from .preferences import get_preference
